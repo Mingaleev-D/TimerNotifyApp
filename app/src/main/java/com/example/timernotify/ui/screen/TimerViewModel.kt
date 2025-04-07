@@ -11,9 +11,12 @@ import com.example.timernotify.domain.usecase.GetTimerStateUseCase
 import com.example.timernotify.domain.usecase.ResetTimerUseCase
 import com.example.timernotify.domain.usecase.StartTimerUseCase
 import com.example.timernotify.domain.usecase.StopTimerUseCase
+import com.example.timernotify.ui.service.TimerState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.launch
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
+
 /**
  * ViewModel, управляющая логикой таймера.
  * Использует use case'ы для старта, остановки и сброса таймера.
@@ -42,14 +45,12 @@ class TimerViewModel @Inject constructor(
     }
 
     fun stopTimer() {
-        Log.d("TimerViewModel", "Stop Timer")
         viewModelScope.launch {
             stopTimerUseCase()
         }
     }
 
     fun resetTimer() {
-        Log.d("TimerViewModel", "Reset Timer")
         viewModelScope.launch {
             resetTimerUseCase()
         }

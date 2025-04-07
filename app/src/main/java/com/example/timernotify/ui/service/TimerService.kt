@@ -1,5 +1,6 @@
 package com.example.timernotify.ui.service
 
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -21,13 +22,17 @@ import com.example.timernotify.MainActivity
 import com.example.timernotify.R
 import dagger.hilt.android.AndroidEntryPoint
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
@@ -38,7 +43,6 @@ import javax.inject.Inject
  * - Сохраняет и восстанавливает состояние таймера после перезапуска устройства
  * - Отправляет финальное уведомление с сигналом по завершении таймера
  */
-
 @AndroidEntryPoint
 class TimerService : LifecycleService() {
 
@@ -54,18 +58,28 @@ class TimerService : LifecycleService() {
     lateinit var context: Context
 
     companion object {
+
         // Команды для управления сервисом
         const val ACTION_START = "com.example.timerapp.action.START"
         const val ACTION_STOP = "com.example.timerapp.action.STOP"
         const val EXTRA_DURATION_MINUTES = "com.example.timerapp.extra.DURATION_MINUTES"
+
         // Уведомления
         const val NOTIFICATION_CHANNEL_ID = "timer_channel"
         const val NOTIFICATION_ID = 1
         const val FINISHED_NOTIFICATION_ID = 2
+
         // SharedPreferences для сохранения состояния
         private const val PREFS_NAME = "TimerPrefs"
         private const val KEY_TARGET_END_TIME = "targetEndTime"
         private const val KEY_IS_RUNNING = "isRunning"
+
+        private const val KEY_LAST_STOP_TIME = "lastStopTime"
+        private const val KEY_LAST_RESTORE_TIME = "lastRestoreTime"
+
+        private const val KEY_SHUTDOWN_TIME = "shutdownTime"
+        private const val KEY_REMAINING_TIME = "remainingTime"
+
 
         /**
          * Проверяет, активен ли был таймер до перезагрузки устройства.
@@ -74,6 +88,7 @@ class TimerService : LifecycleService() {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             return prefs.getBoolean(KEY_IS_RUNNING, false)
         }
+
         /**
          * Получает сохранённое время окончания таймера, если оно было сохранено.
          */
@@ -83,6 +98,7 @@ class TimerService : LifecycleService() {
             return if (time != -1L) time else null
         }
     }
+
     /**
      * Инициализация сервиса: создаём каналы уведомлений и восстанавливаем состояние таймера.
      */
@@ -91,12 +107,17 @@ class TimerService : LifecycleService() {
         createNotificationChannel()
         restoreTimerState()
     }
+
     /**
      * Обработка входящих интентов:
      * - ACTION_START: старт нового таймера или восстановление старого
      * - ACTION_STOP: остановка таймера
      */
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    override fun onStartCommand(
+           intent: Intent?,
+           flags: Int,
+           startId: Int
+    ): Int {
         super.onStartCommand(intent, flags, startId)
 
         when (intent?.action) {
@@ -108,7 +129,10 @@ class TimerService : LifecycleService() {
                     targetEndTimeMillis = System.currentTimeMillis() + durationMillis
                     saveTimerState(targetEndTimeMillis, true)
                     startForegroundTimer(targetEndTimeMillis)
-                    startForeground(NOTIFICATION_ID, createNotification("Таймер запущен...", initial = true))
+                    startForeground(
+                           NOTIFICATION_ID,
+                           createNotification("Таймер запущен...", initial = true)
+                    )
                 } else {
                     // Попытка восстановления из сохранённого состояния
                     restoreTimerState()
@@ -127,21 +151,45 @@ class TimerService : LifecycleService() {
                     }
                 }
             }
+
             ACTION_STOP -> {
                 stopForegroundService()
             }
         }
         return START_STICKY
     }
+
+
     /**
      * Запускает корутину, которая каждую секунду обновляет состояние таймера и уведомления.
      */
-    private fun startForegroundTimer(targetTimeMillis: Long, wasRestored: Boolean = false) {
+    @SuppressLint("DefaultLocale")
+    private fun startForegroundTimer(
+           targetTimeMillis: Long,
+           wasRestored: Boolean = false
+    ) {
         serviceJob?.cancel()
-        // Запускаем уведомление и обновляем состояние
-        startForeground(NOTIFICATION_ID, createNotification("Таймер запущен...", initial = true, restored = wasRestored))
         TimerState.setRunning(true)
         TimerState.setTargetEndTime(targetTimeMillis)
+
+        // Запускаем уведомление
+        startForeground(
+               NOTIFICATION_ID,
+               createNotification(
+                      if (wasRestored) {
+                          val remainingMillis = targetTimeMillis - System.currentTimeMillis()
+                          val remainingSecondsTotal = TimeUnit.MILLISECONDS.toSeconds(remainingMillis)
+                          val remainingMinutes = TimeUnit.MILLISECONDS.toMinutes(remainingMillis)
+                          val remainingSeconds = remainingSecondsTotal % 60
+                          String.format("%02d:%02d", remainingMinutes, remainingSeconds)
+                      } else {
+                          "Таймер запущен..."
+                      },
+                      initial = true,
+                      restored = wasRestored
+               )
+        )
+
         // Основная логика таймера
         serviceJob = lifecycleScope.launch(Dispatchers.IO) {
             val ticker = tickerFlow(1000L) // Каждую секунду
@@ -166,19 +214,13 @@ class TimerService : LifecycleService() {
                     val remainingSecondsTotal = TimeUnit.MILLISECONDS.toSeconds(remainingMillis)
                     val remainingMinutes = TimeUnit.MILLISECONDS.toMinutes(remainingMillis)
                     val remainingSeconds = remainingSecondsTotal % 60
-
                     val timeString = String.format("%02d:%02d", remainingMinutes, remainingSeconds)
-                    // Каждую минуту — отдельное уведомление
-                    if (remainingSeconds == 0L && remainingMinutes > 0) {
-                        updateNotification("Осталось ${remainingMinutes + 1} мин.")
-                    } else if (remainingMinutes == 0L && remainingSeconds > 0 && remainingSeconds % 10 == 0L) {
-                        updateNotification("Осталось $timeString")
-                    } else if (remainingMinutes > 0 && remainingSeconds == 59L){
-                        updateNotification("Осталось $timeString")
-                    }
+
+                    // Обновляем уведомление каждую секунду
+                    updateNotification(timeString)
 
                     if (remainingSeconds == 0L && remainingMinutes >= 0) {
-                        val minutesLeft = remainingMinutes + if(remainingSecondsTotal > 0) 1 else 0
+                        val minutesLeft = remainingMinutes + if (remainingSecondsTotal > 0) 1 else 0
                         if (minutesLeft > 0) {
                             sendMinuteNotification(minutesLeft)
                         }
@@ -187,6 +229,7 @@ class TimerService : LifecycleService() {
             }
         }
     }
+
     /**
      * Завершает работу сервиса, сбрасывает состояние и закрывает уведомления.
      */
@@ -198,24 +241,21 @@ class TimerService : LifecycleService() {
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
+
     /**
      * Обработка завершения таймера: сброс состояния, отправка финального уведомления.
      */
     private fun handleTimerFinish(wasRestarted: Boolean = false) {
         TimerState.reset()
         saveTimerState(null, false)
-
         // Отправляем вибрацию, звук и уведомление (если не было перезапуска)
         if (!wasRestarted) {
             notifyTimerFinished()
         }
-
         // Уведомление о завершении (с текстом "таймер завершён во время перезагрузки" если нужно)
         sendFinalNotification(wasRestarted)
-//        TimerState.reset()
-//        saveTimerState(null, false)
-//        sendFinalNotification(wasRestarted)
     }
+
     /**
      * Создаёт каналы уведомлений (требование Android 8+).
      */
@@ -228,11 +268,14 @@ class TimerService : LifecycleService() {
                 description = descriptionText
                 setSound(null, null)
             }
-
             val finishedChannelId = "${NOTIFICATION_CHANNEL_ID}_finished"
             val finishedName = "Завершение таймера"
             val finishedImportance = NotificationManager.IMPORTANCE_HIGH
-            val finishedChannel = NotificationChannel(finishedChannelId, finishedName, finishedImportance).apply {
+            val finishedChannel = NotificationChannel(
+                   finishedChannelId,
+                   finishedName,
+                   finishedImportance
+            ).apply {
                 description = "Уведомление о завершении таймера"
                 enableVibration(true)
                 val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
@@ -243,12 +286,26 @@ class TimerService : LifecycleService() {
             notificationManager.createNotificationChannel(finishedChannel)
         }
     }
+
     /**
      * Создаёт уведомление с заданным текстом.
      */
-    private fun createNotification(text: String, initial: Boolean = false, restored: Boolean = false): Notification {
-        val title = if (restored) "Таймер восстановлен" else "Таймер работает"
-        val contentText = if (restored) "Таймер продолжает работу. $text" else text
+    private fun createNotification(
+           text: String,
+           initial: Boolean = false,
+           restored: Boolean = false,
+           dynamic: Boolean = false,
+    ): Notification {
+        val title = when {
+            restored -> "Таймер восстановлен"
+            dynamic -> "Таймер" // для обновлений
+            else -> "Таймер работает"
+        }
+        val contentText = if (restored) {
+            "Таймер продолжает работу. $text"
+        } else {
+            text
+        }
 
         val notificationIntent = Intent(this, MainActivity::class.java)
         val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -256,7 +313,12 @@ class TimerService : LifecycleService() {
         } else {
             PendingIntent.FLAG_UPDATE_CURRENT
         }
-        val pendingIntent = PendingIntent.getActivity(this, 0, notificationIntent, pendingIntentFlags)
+        val pendingIntent = PendingIntent.getActivity(
+               this,
+               0,
+               notificationIntent,
+               pendingIntentFlags
+        )
 
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
             .setContentTitle(title)
@@ -267,13 +329,15 @@ class TimerService : LifecycleService() {
             .setOngoing(true)
             .build()
     }
+
     /**
      * Обновляет активное уведомление.
      */
-    private fun updateNotification(text: String) {
-        val notification = createNotification(text)
+    private fun updateNotification(timeText: String) {
+        val notification = createNotification(timeText, dynamic = true)
         notificationManager.notify(NOTIFICATION_ID, notification)
     }
+
     /**
      * Отправляет отдельное уведомление каждую минуту.
      */
@@ -281,21 +345,26 @@ class TimerService : LifecycleService() {
         val text = "Осталось $minutesLeft ${getMinuteWord(minutesLeft)}"
         updateNotification(text)
     }
+
+
     /**
      * Отправляет уведомление о завершении таймера.
      */
     private fun sendFinalNotification(wasRestarted: Boolean) {
         val finishedChannelId = "${NOTIFICATION_CHANNEL_ID}_finished"
-        val contentText = if(wasRestarted) "Таймер завершился во время перезагрузки." else "Время вышло!"
-
+        val contentText = if (wasRestarted) "Таймер завершился во время перезагрузки." else "Время вышло!"
         val notificationIntent = Intent(this, MainActivity::class.java)
         val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         } else {
             PendingIntent.FLAG_UPDATE_CURRENT
         }
-        val pendingIntent = PendingIntent.getActivity(this, 0, notificationIntent, pendingIntentFlags)
-
+        val pendingIntent = PendingIntent.getActivity(
+               this,
+               0,
+               notificationIntent,
+               pendingIntentFlags
+        )
         val notification = NotificationCompat.Builder(this, finishedChannelId)
             .setContentTitle("Таймер завершен")
             .setContentText(contentText)
@@ -308,6 +377,7 @@ class TimerService : LifecycleService() {
 
         notificationManager.notify(FINISHED_NOTIFICATION_ID, notification)
     }
+
     /**
      * Выбирает правильную форму слова "минута" по числу.
      */
@@ -318,10 +388,14 @@ class TimerService : LifecycleService() {
             else -> "минут"
         }
     }
+
     /**
      * Сохраняет текущее состояние таймера в SharedPreferences.
      */
-    private fun saveTimerState(targetTime: Long?, running: Boolean) {
+    private fun saveTimerState(
+           targetTime: Long?,
+           running: Boolean
+    ) {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
         if (targetTime != null) {
             prefs.putLong(KEY_TARGET_END_TIME, targetTime)
@@ -329,8 +403,14 @@ class TimerService : LifecycleService() {
             prefs.remove(KEY_TARGET_END_TIME)
         }
         prefs.putBoolean(KEY_IS_RUNNING, running)
+
+        if (!running) {
+            prefs.putLong(KEY_LAST_STOP_TIME, System.currentTimeMillis())
+        }
+
         prefs.apply()
     }
+
     /**
      * Восстанавливает состояние таймера при старте сервиса.
      */
@@ -345,6 +425,15 @@ class TimerService : LifecycleService() {
                 TimerState.setTargetEndTime(savedTargetTime)
                 TimerState.setRunning(true)
                 TimerState.updateRemainingTime(savedTargetTime - currentTime)
+                // 🆕 Новое: уведомление о восстановлении
+                val lastStopTime = prefs.getLong(KEY_LAST_STOP_TIME, -1L)
+                val restoreTime = System.currentTimeMillis()
+                prefs.edit().putLong(KEY_LAST_RESTORE_TIME, restoreTime).apply()
+
+                if (lastStopTime != -1L) {
+                    showRestoreNotification(lastStopTime, restoreTime)
+                }
+
             } else {
                 handleTimerFinish(wasRestarted = true)
                 saveTimerState(null, false)
@@ -354,10 +443,32 @@ class TimerService : LifecycleService() {
             saveTimerState(null, false)
         }
     }
+
+    @SuppressLint("SimpleDateFormat")
+    private fun showRestoreNotification(stopTime: Long, restoreTime: Long) {
+        val formatter = SimpleDateFormat("HH:mm")
+        val stopFormatted = formatter.format(Date(stopTime))
+        val restoreFormatted = formatter.format(Date(restoreTime))
+        val text = "Таймер восстановлен. Был остановлен в $stopFormatted, возобновлён в $restoreFormatted"
+
+        val notification = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+            .setContentTitle("Таймер восстановлен")
+            .setContentText(text)
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setAutoCancel(true)
+            .build()
+
+        notificationManager.notify(3001, notification)
+    }
+
     /**
      * Поток-тикер, испускающий сигнал каждую секунду.
      */
-    private fun tickerFlow(delayMillis: Long, initialDelayMillis: Long = 0L) = flow {
+    private fun tickerFlow(
+           delayMillis: Long,
+           initialDelayMillis: Long = 0L
+    ) = flow {
         delay(initialDelayMillis)
         while (true) {
             emit(Unit)
@@ -392,7 +503,6 @@ class TimerService : LifecycleService() {
                 start()
             }
         }
-
         // Уведомление
         val channelId = "timer_finish_channel"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -406,7 +516,6 @@ class TimerService : LifecycleService() {
             }
             notificationManager.createNotificationChannel(channel)
         }
-
         val notification = NotificationCompat.Builder(this, channelId)
             .setSmallIcon(R.drawable.ic_launcher_background) // твоя иконка
             .setContentTitle("Время вышло!")
@@ -418,8 +527,6 @@ class TimerService : LifecycleService() {
         notificationManager.notify(2001, notification)
 
     }
-
-
 
     override fun onBind(intent: Intent): IBinder {
         super.onBind(intent)

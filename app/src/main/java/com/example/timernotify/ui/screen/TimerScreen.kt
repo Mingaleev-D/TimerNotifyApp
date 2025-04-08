@@ -19,12 +19,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 
-/**
- * UI-компонент, отображающий интерфейс таймера:
- * - текущий отсчёт времени
- * - поле ввода
- * - кнопки управления (Старт / Стоп / Сброс)
- */
 @Composable
 fun TimerScreen(
        viewModel: TimerViewModel = hiltViewModel()

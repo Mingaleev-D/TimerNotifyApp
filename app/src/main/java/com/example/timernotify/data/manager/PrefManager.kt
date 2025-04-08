@@ -19,16 +19,16 @@ class PrefManager @Inject constructor(@ApplicationContext context: Context) {
     var isTimerRunning: Boolean
         get() = prefs.getBoolean(Constants.KEY_IS_RUNNING, false)
         set(value) = prefs.edit().putBoolean(Constants.KEY_IS_RUNNING, value).apply()
+    var lastUpdateMillis: Long
+        get() = prefs.getLong(Constants.KEY_LAST_UPDATE, 0L)
+        set(value) = prefs.edit().putLong(Constants.KEY_LAST_UPDATE, value).apply()
 
 }
 
-/*
-для этого проекта константы можно вынести в отдельный файл
-но я оставлю их тут
- */
 object Constants {
 
     const val PREFS_NAME = "TimerPrefs"
     const val KEY_END_TIME = "end_time"
     const val KEY_IS_RUNNING = "is_running"
+    const val KEY_LAST_UPDATE = "last_update_time"
 }

@@ -14,9 +14,6 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
-/**
- * DI-модуль, предоставляющий зависимости для таймера.
- */
 @Module
 @InstallIn(SingletonComponent::class)
 object TimerModule {

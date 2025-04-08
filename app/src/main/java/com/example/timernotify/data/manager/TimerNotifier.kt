@@ -5,7 +5,6 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.media.MediaPlayer
-import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.example.timernotify.R
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -29,27 +28,30 @@ class TimerNotifier @Inject constructor(
     }
 
     private var mediaPlayer: MediaPlayer? = null
-    private val foregroundNotificationBuilder = NotificationCompat.Builder(context, CHANNEL_ID)
-        .setSmallIcon(R.drawable.ic_launcher_background)
-        .setContentTitle("Таймер")
-        .setOngoing(true)
 
     init {
         createNotificationChannel()
-        mediaPlayer = MediaPlayer.create(context, R.raw.budilnika) // Replace with your sound file
+        mediaPlayer = MediaPlayer.create(context, R.raw.budilnika)
+    }
+
+    private val foregroundNotificationBuilder by lazy {
+        NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_launcher_background)
+            .setContentTitle("Таймер")
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
     }
 
     private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                   CHANNEL_ID,
-                   CHANNEL_NAME,
-                   NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "Уведомления таймера"
-            }
-            notificationManager.createNotificationChannel(channel)
+        val channel = NotificationChannel(
+               CHANNEL_ID,
+               CHANNEL_NAME,
+               NotificationManager.IMPORTANCE_HIGH
+        ).apply {
+            description = "Уведомления таймера"
         }
+        notificationManager.createNotificationChannel(channel)
     }
 
     fun showForegroundNotification(initialTime: String): Notification {
@@ -60,21 +62,22 @@ class TimerNotifier @Inject constructor(
 
     fun updateForegroundNotification(remainingTime: String) {
         val notification = foregroundNotificationBuilder
-            .setContentText("Осталось: $remainingTime")
+            .setContentText("$remainingTime")
             .build()
         notificationManager.notify(NOTIFICATION_ID_FOREGROUND, notification)
     }
 
     fun notifyEachMinute(remainingMinutes: Int) {
-        val text = "Осталось $remainingMinutes мин."
+        val text = "Осталось ${remainingMinutes} мин."
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_background)
             .setContentTitle("Таймер")
             .setContentText(text)
             .setOnlyAlertOnce(true)
-            .setOngoing(true)
+            .setAutoCancel(true) // Добавили автоотмену
             .build()
         notificationManager.notify(NOTIFICATION_ID_MINUTE, notification)
+
     }
 
     fun notifyFinished() {

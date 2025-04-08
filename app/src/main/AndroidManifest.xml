@@ -29,35 +29,22 @@
          <intent-filter>
             <action android:name="android.intent.action.MAIN" />
 
-<!--            <action android:name="android.intent.action.BOOT_COMPLETED" />-->
-<!--            <action android:name="android.intent.action.QUICKBOOT_POWERON" />-->
-
             <category android:name="android.intent.category.LAUNCHER" />
          </intent-filter>
       </activity>
 
       <!-- Foreground Service -->
       <service
-         android:name=".ui.service.TimerService"
+         android:name=".data.service.TimerService"
          android:foregroundServiceType="dataSync" />
       <receiver
-         android:name=".ui.service.BootCompletedReceiver"
+         android:name=".data.service.BootCompletedReceiver"
          android:enabled="true"
          android:exported="true">
          <intent-filter>
             <action android:name="android.intent.action.BOOT_COMPLETED" />
          </intent-filter>
       </receiver>
-
-      <receiver
-         android:name=".ui.service.ShutdownReceiver"
-         android:enabled="true"
-         android:exported="true">
-         <intent-filter>
-            <action android:name="android.intent.action.ACTION_SHUTDOWN" />
-         </intent-filter>
-      </receiver>
-
 
    </application>
 

@@ -22,11 +22,11 @@ class MainActivity : ComponentActivity() {
                if (isGranted) {
                    // Разрешение получено
                } else {
-                   showPermissionDeniedSnackbar()
+                   showPermissionDeniedToast()
                }
            }
 
-    private fun showPermissionDeniedSnackbar() {
+    private fun showPermissionDeniedToast() {
         Toast.makeText(
                this,
                "Разрешение на отправку уведомлений не было предоставлено",

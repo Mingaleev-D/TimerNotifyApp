@@ -1,20 +1,37 @@
 package com.example.timernotify.ui.screen
 
+import android.app.Application
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.timernotify.domain.usecase.GetTimeDisplayUseCase
-import com.example.timernotify.domain.usecase.GetTimerStateUseCase
+import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import com.example.timernotify.data.manager.Constants
+import com.example.timernotify.data.manager.PrefManager
+import com.example.timernotify.data.manager.TimerNotifier
+import com.example.timernotify.data.service.TimerService
+import com.example.timernotify.domain.usecase.GetEndTimeUseCase
+import com.example.timernotify.domain.usecase.IsTimerRunningUseCase
 import com.example.timernotify.domain.usecase.ResetTimerUseCase
 import com.example.timernotify.domain.usecase.StartTimerUseCase
 import com.example.timernotify.domain.usecase.StopTimerUseCase
-import com.example.timernotify.ui.service.TimerState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
 /**
@@ -22,37 +39,109 @@ import javax.inject.Inject
  * Использует use case'ы для старта, остановки и сброса таймера.
  * Также предоставляет UI-данные: форматированное время и флаг активности.
  */
+
 @HiltViewModel
 class TimerViewModel @Inject constructor(
        private val startTimerUseCase: StartTimerUseCase,
        private val stopTimerUseCase: StopTimerUseCase,
        private val resetTimerUseCase: ResetTimerUseCase,
-       getTimeDisplayUseCase: GetTimeDisplayUseCase,
-       getTimerStateUseCase: GetTimerStateUseCase
+       private val isTimerRunningUseCase: IsTimerRunningUseCase,
+       private val getEndTimeUseCase: GetEndTimeUseCase,
+       @ApplicationContext private val context: Context
 ) : ViewModel() {
 
-    val isRunning = getTimerStateUseCase()
-    val timeDisplay = getTimeDisplayUseCase()
-    var inputMinutes by mutableStateOf("")
+    private val _timeInput = MutableStateFlow("")
+    val timeInput: StateFlow<String> = _timeInput
+
+    private val _remainingTime = MutableStateFlow("00:00")
+    val remainingTime: StateFlow<String> = _remainingTime
+
+    private val _isRunning = MutableStateFlow(false)
+    val isRunning: StateFlow<Boolean> = _isRunning
+
+    private var timerUpdateJob: Job? = null
+
+    init {
+        observeTimerRunningState()
+        loadInitialState()
+    }
+
+    private fun loadInitialState() {
+        viewModelScope.launch {
+            getEndTimeUseCase().collectLatest { endTime ->
+                if (endTime > System.currentTimeMillis()) {
+                    startForegroundService(endTime)
+                }
+            }
+            isTimerRunningUseCase().collectLatest { isRunning ->
+                _isRunning.value = isRunning
+            }
+        }
+    }
+
+    private fun observeTimerRunningState() {
+        viewModelScope.launch {
+            isTimerRunningUseCase().collectLatest { isRunning ->
+                _isRunning.value = isRunning
+                if (isRunning) {
+                    startTimerUpdates()
+                } else {
+                    timerUpdateJob?.cancel()
+                }
+            }
+        }
+    }
+
+    private fun startTimerUpdates() {
+        timerUpdateJob = viewModelScope.launch {
+            while (_isRunning.value) {
+                val endTime = getEndTimeUseCase.invoke().first() // Получаем текущее значение
+                if (endTime > System.currentTimeMillis()) {
+                    val remaining = endTime - System.currentTimeMillis()
+                    updateRemainingTime(remaining)
+                } else if (_isRunning.value) {
+                    stopTimer()
+                    _remainingTime.value = "00:00"
+                }
+                delay(1000)
+            }
+        }
+    }
+
+    private fun startForegroundService(endTime: Long) {
+        val intent = Intent(context, TimerService::class.java)
+        intent.putExtra(Constants.KEY_END_TIME, endTime)
+        ContextCompat.startForegroundService(context, intent)
+    }
+
+    fun updateTimeInput(input: String) {
+        _timeInput.value = input.filter { it.isDigit() }
+    }
 
     fun startTimer() {
-        val minutes = inputMinutes.toLongOrNull() ?: return
-        if (minutes <= 0) return
-        Log.d("TimerViewModel", "Start Timer with $minutes minutes")
-        viewModelScope.launch {
+        val minutes = timeInput.value.toLongOrNull() ?: return
+        if (minutes > 0) {
             startTimerUseCase(minutes)
+            _isRunning.value = true
+            startTimerUpdates()
         }
     }
 
     fun stopTimer() {
-        viewModelScope.launch {
-            stopTimerUseCase()
-        }
+        stopTimerUseCase()
+        _isRunning.value = false
     }
 
     fun resetTimer() {
-        viewModelScope.launch {
-            resetTimerUseCase()
-        }
+        resetTimerUseCase()
+        _timeInput.value = ""
+        _remainingTime.value = "00:00"
+    }
+
+    fun updateRemainingTime(timeInMillis: Long) {
+        val remainingSeconds = (timeInMillis / 1000).toInt()
+        val minutes = remainingSeconds / 60
+        val seconds = remainingSeconds % 60
+        _remainingTime.value = String.format("%02d:%02d", minutes, seconds)
     }
 }

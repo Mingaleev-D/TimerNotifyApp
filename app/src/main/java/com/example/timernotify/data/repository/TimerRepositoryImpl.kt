@@ -4,9 +4,6 @@ import com.example.timernotify.data.manager.PrefManager
 import com.example.timernotify.domain.repository.TimerRepository
 import javax.inject.Inject
 
-/**
- * Реализация репозитория. Работает с `TimerService`, `TimerState` и форматирует отображение времени.
- */
 class TimerRepositoryImpl @Inject constructor(
        private val prefManager: PrefManager
 ) : TimerRepository {

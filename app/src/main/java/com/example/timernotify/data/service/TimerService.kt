@@ -15,13 +15,6 @@ import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
-/**
- * Foreground-сервис, который управляет логикой таймера:
- * - Обрабатывает запуск/остановку таймера
- * - Обновляет уведомления каждую минуту
- * - Сохраняет и восстанавливает состояние таймера после перезапуска устройства
- * - Отправляет финальное уведомление с сигналом по завершении таймера
- */
 @AndroidEntryPoint
 class TimerService : Service() {
 

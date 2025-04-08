@@ -10,10 +10,6 @@ import com.example.timernotify.data.manager.TimerNotifier
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
-/**
- * BroadcastReceiver, который срабатывает при завершении загрузки устройства.
- * Используется для восстановления работы таймера, если он был активен до перезагрузки.
- */
 @AndroidEntryPoint
 class BootCompletedReceiver : BroadcastReceiver() {
 

@@ -1,22 +1,11 @@
 package com.example.timernotify.ui.screen
 
-import android.app.Application
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
-import android.util.Log
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.example.timernotify.data.manager.Constants
-import com.example.timernotify.data.manager.PrefManager
-import com.example.timernotify.data.manager.TimerNotifier
 import com.example.timernotify.data.service.TimerService
 import com.example.timernotify.domain.usecase.GetEndTimeUseCase
 import com.example.timernotify.domain.usecase.IsTimerRunningUseCase
@@ -34,12 +23,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-/**
- * ViewModel, управляющая логикой таймера.
- * Использует use case'ы для старта, остановки и сброса таймера.
- * Также предоставляет UI-данные: форматированное время и флаг активности.
- */
-
 @HiltViewModel
 class TimerViewModel @Inject constructor(
        private val startTimerUseCase: StartTimerUseCase,
@@ -52,13 +35,10 @@ class TimerViewModel @Inject constructor(
 
     private val _timeInput = MutableStateFlow("")
     val timeInput: StateFlow<String> = _timeInput
-
     private val _remainingTime = MutableStateFlow("00:00")
     val remainingTime: StateFlow<String> = _remainingTime
-
     private val _isRunning = MutableStateFlow(false)
     val isRunning: StateFlow<Boolean> = _isRunning
-
     private var timerUpdateJob: Job? = null
 
     init {
